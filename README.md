@@ -1,2 +1,2 @@
 # DSC1107
-Data Mining and Wragling
+Data Mining and Wrangling
