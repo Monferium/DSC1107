@@ -1,0 +1,258 @@
+---
+title: "DSC1107_MONFERO_FA1-PART1"
+author: "John Benedict A. Monfero"
+date: "2025-02-03"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## 1 Case Study: Diamonds
+
+```{r library_call}
+library(tidyverse)
+```
+
+```{r dataset_call}
+diamonds
+```
+> What do variables in this dataset represent? How many of them are there?
+
+>> The variables represents some observable feature does each diamond in the dataset, it can be describe according to 10 factors: carat; cut; color; clarity; depth; table; price; and x, y, z depths of each diamond.
+
+> Which variables are continuous?
+
+>> The continious variables that describes each diamonds are carat; depth table; price; x, y and z depths
+
+> Which variables are categorical?
+
+>> The categorical variable that describes each diamonds are cut; color; and clarity
+
+## 3. Variation
+### 3.1 Discrete Variables
+
+```{r bar_charts}
+ggplot(data = diamonds) + geom_bar(mapping = aes(x = cut))
+```
+
+>  What is the most common kind of diamond cut?
+
+>> In the given bar graph above, it shows how much each of the cut type of diamonds can be classified as, over 20,000 of them are ideal cut denoting that this is the most common kind of diamond cut in the given dataset
+
+### 3.2 Continious Variable
+
+```{r histogram}
+ggplot(data = diamonds) + geom_histogram(mapping = aes(x = carat))
+```
+
+> What can be said about the variation in carat? Most of the values of carat are below 3, so let’s zoom into that portion of the plot using coord_cartesian:
+
+```{r histogram_continuation}
+ggplot(data = diamonds) + geom_histogram(mapping = aes(x = carat)) + coord_cartesian(xlim = c(0.00, 3.00))
+```
+
+> Note the warning message about the number of bins. We might need to experiment to find a meaningful value for the number of bins in a histogram. Let’s try decreasing the bin width:
+
+```{r histogram_continuation-2}
+ ggplot(data=diamonds)+
+ geom_histogram(mapping=aes(x= carat),binwidth=0.01)+
+ coord_cartesian(xlim=c(0,3))
+```
+>  That’s a peculiar pattern! What kinds of carat values do most diamonds have? Why?
+
+>> We can now observed the graph certainly than ever, given with much finer binwidth, the distribution became more disperse, as a matter of fact, between 0.20 to 1.00 carat, we can see top 6 frequent carat values is.
+
+## 4. Covariation
+### 4.1. Discrete versus discrete
+
+```{r countplots}
+ggplot(data = diamonds) + geom_count(mapping = aes(x = cut, y = clarity))
+```
+> What can we say about the relationship between cut and clarity?
+
+>> As the cut of each diamonds is more fair or good, the clarity of all diamonds is said to be evenly distribution with slight peak curve from VS2, S1, and S2. Conversely, dispered distribution is very evident on the cut Very Good, Premium and Ideal where their peaks is mostly in the clarity VS and SI in both number types.
+
+### 4.2. Continious versus continious
+#### 4.2.1. Many to one
+
+```{r scatterplot}
+ ggplot(data = diamonds) +
+ geom_point(mapping = aes(x = x, y = y))
+```
+>  Whoa! There seem to be some weird outliers in the data. We should probably look in to those more and perhaps remove them. For now, let’s just zoom in on the part of the plot where most of the points lie:
+
+```{r scatterplot_continuation}
+ ggplot(data=diamonds)+
+ geom_point(mapping=aes(x=x,y=y))+
+ geom_abline(slope=1,intercept = 0,color="red")+
+ coord_cartesian(xlim=c(3.5,10), ylim=c(3.5,10))
+```
+> This implies that as the x-depth of the diamond increases, the y-depth of these diamonds certainly and proportionally increases as well by 1:1 ratio
+
+#### 4.2.2. One to One
+
+```{r average_price}
+ avg_price_by_carat<-diamonds%>%
+ mutate(carat=round(carat,1))%>%
+ group_by(carat)%>%
+ summarise(avg_price=mean(price))
+ avg_price_by_carat
+```
+
+```{r line_plot}
+ ggplot(data = avg_price_by_carat) +
+ geom_line(mapping = aes(x = carat, y = avg_price))
+```
+
+> What is the relationship between average price and carat? Does this make sense?
+
+>> As we can observed from graph above, three patterns can be induced, first from 0 to 2.5 carats, the price of the diamond tends to follow a same trend of increasing prices by 5000 per carat. However, above 2.5 to 4.0 carats we can see some fluctuations of prices between 10,000 to 16,000. Finally, from 4.0 to 5.0 carats, the prices of each diamonds tends to be within above 16,000.
+
+### 4.3. Continious versus discrete
+
+```{r box_plot}
+ ggplot(data = diamonds) +
+ geom_boxplot(mapping = aes(x = cut, y = price))
+```
+
+>  Those thick black lines in the middle denote the median price for each cut. What trend do we observe in the median price based as the cut improves? Is this what you would have expected?
+
+>> Given the cut quality of each diamond, their average - median - prices of each cut quality does not influence the prices much, they are around 3500.00 except the ideal cut which has average - median - prices of around 2000.00.
+
+### 5. Additional visualization tools
+#### 5.1. Axis transformations
+
+```{r}
+ ggplot(data = diamonds) +
+ geom_histogram(aes(x = carat), binwidth = 0.01)
+```
+
+```{r}
+ggplot(data = diamonds) +
+ geom_histogram(aes(x = carat), binwidth = 0.01) +
+ scale_x_log10()
+```
+
+```{r}
+ggplot(data = diamonds) +
+ geom_point(aes(x = carat, y = price)) +
+ scale_x_log10() +
+ scale_y_log10()
+```
+
+#### 5.2. Multiple Geoms in the same plot
+```{r}
+ ggplot(data = avg_price_by_carat) +
+ geom_line(mapping = aes(x = carat, y = avg_price)) +
+ geom_point(mapping = aes(x = carat, y = avg_price))
+```
+
+```{r}
+ggplot(data = avg_price_by_carat, mapping = aes(x = carat, y = avg_price)) +
+ geom_line() +
+ geom_point()
+```
+
+#### 5.3. Multiple aesthetics in the same geom
+
+```{r}
+ggplot(data = diamonds) +
+ geom_point(mapping = aes(x = carat, y = price))
+```
+
+```{r}
+ggplot(data = diamonds) + geom_point(mapping = aes(x = carat, y = price, color = cut))
+```
+
+#### 5.4. Faceting
+
+```{r}
+ggplot(data = diamonds) + geom_point(mapping = aes(x = carat, y = price)) + facet_wrap(~cut)
+```
+
+```{r}
+ggplot(data = diamonds) + geom_point(mapping = aes(x = carat, y = price)) + facet_grid(. ~ cut)
+```
+
+```{r}
+ggplot(data = diamonds) + geom_point(mapping = aes(x = carat, y = price)) + facet_grid(clarity ~ cut)
+```
+
+### 7. Exercises
+#### 7.1. Relating the carat and cut of a diamond
+
+```{r}
+ ggplot(data = diamonds) +
+ geom_point(mapping = aes(x = carat, y = price, color = cut))
+```
+
+> What relationship does it suggest between carat and cut?
+
+>> Consider the fact that each color represents the cut of each diamonds, literally each cut are widely and evenly spread regardless of the price and carat size
+
+> Create a plot to directly visualize this relation
+ship.
+
+```{r}
+# Create the scatter plot
+ggplot(data = diamonds) +
+  geom_point(mapping = aes(x = carat, y = price, color = cut)) +
+  labs(title = "Carat vs Price of Diamonds",
+       x = "Carat",
+       y = "Price",
+       color = "Cut") + facet_wrap(~cut)
+```
+
+>> We all see the given graph above, regardless which type of diamond cuts, we see identical distribution as the carat increases, the prices starts to have wider ranges to offer but the trend tells that diamonds with a lower cut quality ("fair cut") tends to have more extreme high carat before having the same price as compared to higher quality cuts to have more even price distribution as the carat concentration on each diamond considers!
+
+```{r box_plot_2}
+ ggplot(data = diamonds) +
+ geom_boxplot(mapping = aes(x = cut, y = price))
+```
+
+> What do you conclude? How does this explain the paradoxical trend we found in the plot below?
+
+>> Despite the cut quality given, the distribution of the prices does not impact much as we can see, the first four cut qualities has similar average prices in terms of the median (50th percentile) of the distribution. Moreover, the average price in the highest quality cut "ideal" has noticeable lower median price, this would implied that most ideal cut diamonds tend to be cheaper than any quality cut of diamonds. This is rather a contradition or paradoxical at first glance due to the better cut given, but the average price of each cut tends to be the same but way lower on the best one, but as a matter of fact the better the object it can features supposed to make the value of that object makes more expensive also, this means that diamonds may not rely much on how good or fine the cut quality it has, rather the average prices of each diamonds rather depends on other factors.
+
+#### 7.2. Relating to size and carat of a diamond
+
+> Create a plot to visualize the relationship between the carat and length of a diamond. 
+
+
+```{r initial_creation_of_scatter_plot}
+# Create the scatter plot
+ggplot(data = diamonds, aes(x = carat, y = x)) +
+  geom_point(alpha = 0.5, color = "blue") +
+  labs(title = "Carat vs Length (x) of Diamonds",
+       x = "Carat",
+       y = "Length (x)") +
+  theme_minimal()
+```
+
+> Zoom in to exclude any outliers. 
+
+```{r final_scatter_plot}
+# Filter out extreme outlines based on reasonable ranges
+diamonds_filtered <- diamonds %>%
+  filter(3 < x & x < 10)  # Excluding outliers
+
+# Create the scatter plot
+ggplot(data = diamonds_filtered, aes(x = carat, y = x)) +
+  geom_abline(slope=1.7,intercept = 3.8,color="red") +
+  geom_point(alpha = 0.5, color = "blue") +
+  labs(title = "Carat vs Length (x) of Diamonds",
+       x = "Carat",
+       y = "Length (x)") +
+  theme_minimal()
+```
+
+> What sort of relationship does your plot suggest? How would you explain this relationship?
+
+>> Almost all diamonds have a lenght of at least 4.00 units, and as the carat concentration of each diamond increases, the lenght (x) of each diamond also increases. This may suggest that as the diamond possesses greater physical dimension such as length only if the carat of each diamond is also greater.
+
+>> Despite the given red linear line, we see that the growth of lenght is non-collinear to the growth of carat, this trend therefore apprears to be logarithmic than polynomial curve, indicates that as the carat gets larger and larger, the lenght of each diamond may still increases but the significance starts to diminishes
+
+
+
