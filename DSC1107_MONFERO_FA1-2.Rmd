@@ -1,0 +1,279 @@
+---
+title: "DSC1107_MONFERO_FA1-2"
+author: "John Benedict A. Monfero"
+date: "2025-01-31"
+output: md_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### 1. Introduction
+
+```{r import}
+ library(tidyverse)
+```
+
+*Recall the diamonds dataset*
+
+```{r dataset}
+diamonds
+```
+
+*In addition to plotting these data, we might want to explore them by transforming them in various ways*
+
+### 2. Isolating Data
+#### 2.1. `filter()`
+
+```{r filter}
+#subset to diamonds with price at least $10,000
+ filter(diamonds, price>=10000)
+```
+
+```{r filter_with_conditions}
+#subset to diamonds with priceatleast $10,000 AND clarity VVS1 or IF
+ filter(diamonds, price>=10000 & clarity %in% c("VVS1","IF"))
+```
+*Exercise: Filter diamonds to those with ideal cut and at least 3 carats. How many such diamonds are there?*
+
+```{r filter_excercise}
+ #Exercise
+  filter(diamonds, cut == "Ideal" & carat >= 3.00)
+```
+
+**The answer to the given exercise shall be there are only 4 diamonds whose their cut quality and carat concentration are Ideal and at least 3.00**
+
+#### 2.2. `select()`
+
+```{r select}
+#select columns corresponding to the "4C's"
+ select(diamonds,carat,cut,color,clarity)
+```
+*The `select()` function comes with helper functions,such as the following:*
++ `-` selects all columns except the given ones, e.g. `select(diamonds,-carat)`
++ `:` selects columns between the given ones, e.g. `select(diamonds,carat:clarity)`
++ `contains` selects columns containing a given string, e.g. `select(diamonds,contains("c"))`
++ `starts_with` selects columns starting with a given string, e.g. `select(diamonds,starts_with("c"))`
++ `ends_with` selects column sending with a given string, e.g. `select(diamonds,ends_with("t"))`
+
+**Exercise: Select all columns except x,y,z**
+```{r select_exercise}
+  select(diamonds, -x, -y, -z)
+```
+#### 2.3. `arrange()`
+
+*An `arrange` operation sorts the rows of the data frame according to one of its variables:*
+
+```{r arrange}
+arrange(diamonds,carat) #sort diamonds by carat (ascending)
+arrange(diamonds,desc(carat))#sort diamonds by carat(descending)
+```
+
+*Exercise: Arrange diamonds in decreasing order of their length. How long is the longest diamond?*
+
+```{r arrange_excercise}
+# The series of data `x`, `y` and `z` in diamonds dataset corresponds to length, width and height respectively, to answer how long it is, we will focused only on `x`
+select(arrange(diamonds,desc(x)), -carat, -clarity, -cut, -color, -depth, -table, -price, -y, -z)
+```
+**The data above shows that the longest diamond in the dataset should be 10.74 units long**
+
+### 3. Deriving Information
+#### 3.1. `mutate`
+
+A `mutate` operation adds another column as a function of existing columns:
+```{r mutate}
+ #add column that is the price per carat of each diamond
+ mutate(diamonds,price_per_carat=price/carat)
+
+ #add column that indicates whether adiamond's price per carat is at least $10k
+ mutate(diamonds,fancy_diamond=price/carat>10000)
+```
+ Note that `fancy_diamond` is a logical variable.
+
+ Complex combinations of existing variable can be obtained with `mutate()` via `if_else()` and `case_when()`.
+
+```{r mutate_cont}
+ #use if_else() if you have two cases
+ mutate(diamonds,
+ good_value=
+   if_else(
+     condition=carat>2, #check whether carat>2
+     true=price<5000, #if so, good value if cheaper than $5k
+     false=price<1000 #if not, good value if cheaper than $1k
+   )
+ )
+
+ #use case_when() if you have more than two cases
+ mutate(diamonds,
+ value=
+   case_when(
+    carat > 2 & price < 5000 ~ "good", #if carat > 2 and price < 5000,then good
+    carat > 1 & price < 2500 ~ "ok", #if carat > 1 and price < 2500, then ok
+     TRUE ~"bad" #otherwise, bad
+   )
+ )
+```
+
+*Exercise: Add a variable called `good_color` that is `TRUE` if the color is `D,E,F,G` and `FALSE` otherwise.*
+
+```{r mutate_excercise}
+mutate(diamonds, 
+       good_color = 
+         if_else(
+           condition = color %in% c("D", "E", "F", "G"),
+           TRUE,
+           FALSE
+         )
+       )
+```
+
+#### 3.2. `summarize()`
+
+*A `summarise` operation calculates summary statistics combining all rows of the data:*
+
+Useful summary functions are `sum()`,`mean()`,`median()`,`min()`,`max()`,`var()`,`sd()` for numeric variables and `any()`,`all()`,`sum()`,`mean()` for logical variables. The function `n()` takes no arguments and calculates the number of observations (rows) in the data.
+
+More than one summary can be extracted in a single call to `summarise()`
+```{r summarise}
+#find the number of "fancy" diamonds (price per carat at least $10000),
+ summarise(diamonds,num_fancy_diamonds=sum(price/carat>10000))
+
+ #find the number of "fancy" diamonds (price per carat at least $10000),
+ #as well as the mean price of a diamond
+ summarise(diamonds,
+ num_fancy_diamonds=sum(price/carat>10000),
+ mean_diamond_price=mean(price))
+```
+
+*Exercise: Use `summarise` to determine if there are any diamonds of at least one carat that cost less that $1000.*
+
+```{r summarise_excercise}
+ summarise(diamonds, 
+           num_better_carat_low_cost = sum((carat >= 1.00) & (price < 1000.00))
+           )
+```
+**The table above determines that there is no diamonds of at least 1.00 carat that is also cost less than $1,000.00**
+
+### 4. Multi-step transformation
+#### 4.1. The pipe `%>%`
+
+*`x %>% f(y)` is translated to f(x,y)*
+
+*The pipe can be used to pass data between different `tidyverse` packages, e.g. from `dplyr` to `ggplot2`:*
+```{r pipe}
+diamonds%>% #pipe in the data
+ filter(cut=="Premium")%>% #restrict to premium cut diamonds
+ mutate(price_per_carat=price/carat)%>% # add price_per_carat variable
+ arrange(desc(price_per_carat)) #sort based on price_per_carat
+
+ diamonds%>% #pipe in the data
+ filter(cut=="Premium")%>% #restrict to premium cut diamonds
+ mutate(price_per_carat=price/carat)%>% #add price_per_carat variable
+ ggplot()+ #start a ggplot
+ geom_histogram(aes(x=price_per_carat)) #add a histogram
+```
+*Exercise: Compute the mean price for diamonds of volume at least one carat.*
+
+```{r pipe_exercise}
+diamonds %>%
+  filter(carat >= 1.00) %>%
+  summarise(average_price_least_oneCarat_diamond = mean(price))
+```
+**The mean price for diamonds of volume having at least one carat is about $8142.115**
+
+#### 4.2. `group_by()`
+
+*Sometimes we’d like to apply transformations to groups of observations based on categorical variables in our data. For example, suppose we’d like to know the maximum diamond price for each value of cut. We can do the following:*
+
+*We can group by multiple characteristics, e.g.:*
+
+```{r group_by}
+ diamonds %>%
+ group_by(cut) %>%
+ summarise(max_price = max(price))
+ # pipe in the data
+ # group by cut
+ # find the max price for each cut
+
+diamonds %>%
+ group_by(cut, clarity) %>%
+ summarise(max_price = max(price)) %>%
+ ungroup
+ # pipe in the data
+ # group by both cut and clarity
+ # find the max price for each group
+```
+
+```{r count}
+count(diamonds,cut)
+```
+**Exercise: Reproduce the output of `count(diamonds,cut)` via `group_by()` and `summarise()`.**
+
+```{r group_by_exercise}
+diamonds %>%
+  group_by(cut) %>%
+  summarise(number_of_diamonds = n())
+```
+#### 4.3. Storing the transformed data
+*If we want to save the transformed data, we have the use the assignment operator, <-*
+```{r store}
+ max_prices<-diamonds%>% #pipe in the data
+ group_by(cut)%>% #group by cut
+ summarise(max_price=max(price)) #find the max price for each cut
+ max_prices
+```
+### 6. Exercises
+
+*What is the minimum diamond price in this data set? See if you can find the answer in two different ways (i.e. using two different dplyr verbs).*
+```{r exercise_minimum_diamond_price}
+diamonds %>%
+  summarise(minimum_price = min(price), how_many_diamonds = n())
+```
+**The data set reveals that among all diamonds, the lowest price possible would be $326.00**
+
+*How many diamonds have length at least one and a half times their width*
+```{r exercise_length_vs_width}
+
+# x = length
+# y = width
+## if x >= 1.50y then count() =+ 1 since it declares at least *one* and *a half*
+diamonds %>%
+  select(x, y) %>%
+  mutate(
+    is_the_shape_longer_than_wider = 
+      if_else(
+        condition = x >= 1.50 * y,
+        TRUE,
+        FALSE
+      )
+      ) %>%
+  group_by(is_the_shape_longer_than_wider) %>%
+  summarise(number_of_diamonds = n())
+  
+```
+**There are 10 diamonds whose have length at least one and a half times their width**
+
+*Among diamonds with colors D,E,F,G, what is the median number of carats for diamonds of each cut?*
+
+```{r final_excercise}
+# Process the data
+diamonds_summary <- diamonds %>%
+  select(carat, cut, color) %>%
+  filter(color %in% c("D", "E", "F", "G")) %>%
+  group_by(cut, color) %>%
+  summarise(median_carat = median(carat)) %>%
+  ungroup()
+
+# Create a grouped bar chart
+ggplot(diamonds_summary, aes(x = cut, y = median_carat, fill = color)) +
+  geom_col(position = "dodge") +  # Creates grouped bars
+  labs(title = "Median Carat by Cut and Color",
+       x = "Cut",
+       y = "Median Carat",
+       fill = "Color") +
+  theme_minimal()
+
+```
+
+**As we can see, among diamonds with colors D,E,F,G, the median number of carats for diamonds of each cut are as follows: all colors D and E tends to have same median number of carats for any cut diamond quality, nevertheless color G tends to have highest carat concentration regardless on every cut quality while color F shares similar median number of carats on "Very Good cut and Premium cut" while color F diamonds shares similar median number of carats on the remaining cut**
