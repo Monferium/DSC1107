@@ -1,0 +1,112 @@
+---
+title: "Data Wrangling"
+author: "John Benedict A. Monfero"
+date: "2025-02-16"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Case Study: Major League Baseball
+> What is the relationship between payroll and wins among Major League Baseball (MLB) teams? In this homework, we’ll find out by wrangling, exploring, and modeling the dataset in `MLPayData_Total.rdata`, which contains the winning records and the payroll data of all 30 MLB teams from 1998 to 2014.
+>
+> The dataset has the following variables:
+
+- `payroll`: total team payroll (in billions of dollars) over the 17-year period
+- `avgwin`: the aggregated win percentage over the 17-year period
+-	`Team.name.2014`: the name of the team
+-	`p1998, . . . , p2014`: payroll for each year (in millions of dollars)
+-	`X1998, . . . , X2014`: number of wins for each year
+-	`X1998.pct, . . . , X2014.pct`: win percentage for each year
+
+> We’ll need to use the following R packages:
+
+```{r}
+library(tidyverse) # tidyverse
+library(ggrepel)	# for scatter plot point labels 
+library(kableExtra) # for printing tables 
+library(cowplot)	# for side by side plots
+```
+
+## Import
+•	Import the data into a `tibble` called `mlb_raw` and print it.
+```{r}
+# Load the dataset
+load("ml_pay.rdata")
+
+# Convert the dataset into a tibble
+mlb_raw <- as_tibble(ml_pay)
+
+# Print the tibble
+print(mlb_raw)
+```
+•	How many rows and columns does the data have?
+•	Does this match up with the data description given above?
+```{r}
+# Get the dimensions of the dataset
+dimensions <- dim(mlb_raw)
+
+# Print the number of rows and columns
+cat("Number of rows:", dimensions[1], "\n")
+cat("Number of columns:", dimensions[2], "\n")
+```
+
+**Solution:**
+- The dataset contains `r dimensions[1] = 30` rows and `r dimensions[2] = 54` columns as provided above.
+
+- The description of the case study above, states that the dataset should include *team payroll*, *average win percentage*, *team names*, and *yearly payroll* and *win records from 1998 to 2014*.
+- For the next Chapter: we will verify whether these variables match the description by examining the column names in the next steps.
+
+## Tidy
+> The raw data are in a messy format: Some of the column names are hard to interpret, we have data from different years in the same row, and both year-by-year and aggregate data are present.
+
+- Tidy the data into two separate `tibbles`: one called `mlb_aggregate` containing the aggregate data and another called `mlb_yearly` containing the `year-by-year data`. `mlb_total` should contain columns named `team`, `payroll_aggregate`, `pct_wins_aggregate` and `mlb_yearly` should contain columns named `team`, `year`, `payroll`, `pct_wins`, `num_wins`. Comment your code to explain each step.
+```{r}
+# Create mlb_aggregate with team, payroll_aggregate, and pct_wins_aggregate
+mlb_aggregate <- mlb_raw %>% 
+  select(Team.name.2014, payroll, avgwin) %>% 
+  rename(team = Team.name.2014, 
+         payroll_aggregate = payroll, 
+         pct_wins_aggregate = avgwin)
+
+# Transforming year-by-year data into a tidy format
+mlb_yearly <- mlb_raw %>% 
+  select(Team.name.2014, starts_with("p"), starts_with("X")) %>% 
+  pivot_longer(cols = -Team.name.2014, 
+               names_to = "column_name", 
+               values_to = "value") %>% 
+  separate(column_name, into = c("prefix", "year", "suffix"), sep = "(?<=\D)(?=\d)|(?<=\d)(?=\D)", fill = "right") %>% 
+  mutate(tidy_col_name = case_when(
+    prefix == "p" ~ "payroll",
+    suffix == "pct" ~ "pct_wins",
+    TRUE ~ "num_wins"
+  )) %>% 
+  select(-prefix, -suffix) %>% 
+  pivot_wider(names_from = tidy_col_name, values_from = value) %>% 
+  rename(team = Team.name.2014)
+
+mlb_yearly
+```
+- Print these two tibbles. How many rows do mlb_aggregate and mlb_yearly contain, and why?
+```{r}
+# Print mlb_aggregate
+tibble::print(mlb_aggregate)
+
+# Print mlb_yearly
+tibble::print(mlb_yearly)
+
+# Get the dimensions of both datasets
+cat("Number of rows in mlb_aggregate:", nrow(mlb_aggregate), "\n")
+cat("Number of rows in mlb_yearly:", nrow(mlb_yearly), "\n")
+```
+
+**Solution:**
+- The `mlb_aggregate` tibble contains `r nrow(mlb_aggregate)` rows, representing each MLB team.
+- The `mlb_yearly` tibble contains `r nrow(mlb_yearly)` rows, representing team-year observations.
+- The increase in rows in `mlb_yearly` occurs because we have multiple observations for each team across multiple years (from 1998 to 2014).
+
+```{r}
+
+```
