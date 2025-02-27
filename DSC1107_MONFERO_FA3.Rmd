@@ -63,6 +63,9 @@ cat("Number of columns:", dimensions[2], "\n")
 > The raw data are in a messy format: Some of the column names are hard to interpret, we have data from different years in the same row, and both year-by-year and aggregate data are present.
 
 - Tidy the data into two separate `tibbles`: one called `mlb_aggregate` containing the aggregate data and another called `mlb_yearly` containing the `year-by-year data`. `mlb_total` should contain columns named `team`, `payroll_aggregate`, `pct_wins_aggregate` and `mlb_yearly` should contain columns named `team`, `year`, `payroll`, `pct_wins`, `num_wins`. Comment your code to explain each step.
+
+*[Hint: For mlb_yearly, the main challenge is to extract the information from the column names. To do so, you can pivot_longer all these column names into one column called column_name, separate this column into three called prefix, year, suffix, mutate prefix and suffix into a a new column called tidy_col_name that takes values payroll, num_wins, or pct_wins, and then pivot_wider to make the entries of tidy_col_name into column names.]*
+
 ```{r}
 # Create mlb_aggregate with team, payroll_aggregate, and pct_wins_aggregate
 mlb_aggregate <- mlb_raw %>% 
@@ -71,31 +74,33 @@ mlb_aggregate <- mlb_raw %>%
          payroll_aggregate = payroll, 
          pct_wins_aggregate = avgwin)
 
-# Transforming year-by-year data into a tidy format
-mlb_yearly <- mlb_raw %>% 
-  select(Team.name.2014, starts_with("p"), starts_with("X")) %>% 
-  pivot_longer(cols = -Team.name.2014, 
-               names_to = "column_name", 
-               values_to = "value") %>% 
-  separate(column_name, into = c("prefix", "year", "suffix"), sep = "(?<=\D)(?=\d)|(?<=\d)(?=\D)", fill = "right") %>% 
+mlb_yearly <- mlb_raw %>%
+  select(Team.name.2014, starts_with("p"), starts_with("X")) %>%
+  pivot_longer(cols = -Team.name.2014, names_to = "column_name", values_to = "value") %>%
+  
+  # Extract year using regex to capture 4-digit numbers
+  mutate(year = str_extract(column_name, "\\d{4}")) %>%
+  
+  # Determine column type using manual checks
   mutate(tidy_col_name = case_when(
-    prefix == "p" ~ "payroll",
-    suffix == "pct" ~ "pct_wins",
+    str_starts(column_name, "p") ~ "payroll",
+    str_ends(column_name, "pct") ~ "pct_wins",
     TRUE ~ "num_wins"
-  )) %>% 
-  select(-prefix, -suffix) %>% 
-  pivot_wider(names_from = tidy_col_name, values_from = value) %>% 
-  rename(team = Team.name.2014)
-
-mlb_yearly
+  )) %>%
+  
+  # Drop the original column_name and reshape
+  select(Team.name.2014, year, tidy_col_name, value) %>%
+  pivot_wider(names_from = tidy_col_name, values_from = value) %>%
+  rename(team = Team.name.2014) %>%
+  drop_na()
 ```
 - Print these two tibbles. How many rows do mlb_aggregate and mlb_yearly contain, and why?
 ```{r}
 # Print mlb_aggregate
-tibble::print(mlb_aggregate)
+print(mlb_aggregate)
 
 # Print mlb_yearly
-tibble::print(mlb_yearly)
+print(mlb_yearly)
 
 # Get the dimensions of both datasets
 cat("Number of rows in mlb_aggregate:", nrow(mlb_aggregate), "\n")
@@ -107,6 +112,148 @@ cat("Number of rows in mlb_yearly:", nrow(mlb_yearly), "\n")
 - The `mlb_yearly` tibble contains `r nrow(mlb_yearly)` rows, representing team-year observations.
 - The increase in rows in `mlb_yearly` occurs because we have multiple observations for each team across multiple years (from 1998 to 2014).
 
-```{r}
+## Quality Control
+> It’s always a good idea to check whether a dataset is internally consistent. In this case, we are given both aggregated and yearly data, so we can check whether these match. To this end, carry out the following steps:
 
+- Create a new tibble called `mlb_aggregate_computed` based on aggregating the data in `mlb_yearly`, containing columns named `team`, `payroll_aggregate_computed`, and `pct_wins_aggregate_computed`.
+
+```{r}
+mlb_aggregate_computed <- mlb_yearly %>%
+  group_by(team) %>%
+  summarise(
+    payroll_aggregate_computed = sum(payroll, na.rm = TRUE)/1000, 
+    #since the payroll_aggregate in the `mlb_aggregate` is in terms of billions; in mlb_yearly, each p#### was in terms of millions, we will divide each computed by 1000
+    
+    pct_wins_aggregate_computed = mean(pct_wins, na.rm = TRUE)
+  )
+#print result
+mlb_aggregate_computed
 ```
+
+- Ideally, `mlb_aggregate_computed` would match `mlb_aggregate`.  To check whether this is the case, join these two `tibbles` into `mlb_aggregate_joined` (which should have five columns: `team`, `payroll_aggregate`, `pct_wins_aggregate`, `payroll_aggregate_computed`, and `pct_wins_aggregate_computed`.)
+```{r}
+# Join the computed and provided aggregate data
+mlb_aggregate_joined <- mlb_aggregate %>%
+  left_join(mlb_aggregate_computed, by = "team") %>%
+  select(team, payroll_aggregate_computed, payroll_aggregate, pct_wins_aggregate_computed, pct_wins_aggregate)
+
+# Print joined tibble
+mlb_aggregate_joined
+```
+
+- Create scatter plots of `payroll_aggregate_computed` versus `payroll_aggregate` and `pct_wins_aggregate_computed` versus `pct_wins_aggregate`, including a `45◦` line in each. Display these scatter plots side by side, and comment on the relationship between the computed and provided aggregate statistics.
+
+```{r}
+plot1 <- ggplot(mlb_aggregate_joined, aes(x = payroll_aggregate, y = payroll_aggregate_computed)) +
+  geom_point() +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "red") +
+  ggtitle("Payroll Aggregate: Provided vs. Computed")
+
+plot2 <- ggplot(mlb_aggregate_joined, aes(x = pct_wins_aggregate, y = pct_wins_aggregate_computed)) +
+  geom_point() +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "red") +
+  ggtitle("Win Percentage Aggregate: Provided vs. Computed")
+
+plot1
+plot2
+```
+
+**Solution:**
+
+- The `mlb_aggregate_computed` tibble was created by summing the payroll and averaging win percentage from `mlb_yearly`.
+- The `mlb_aggregate_joined` tibble contains the original and computed aggregates for comparison.
+- The scatter plots compare the provided vs. computed values, with a 45-degree line as a reference.
+- If points align closely with the 45-degree line, the data is consistent. Deviations indicate discrepancies.
+
+#### Now that the data are in tidy format, we can explore them by producing visualizations and summary statistics.
+
+# Exploration of the Case Study
+
+## Payroll across years
+
+- Plot `payroll` as a function of `year` for each of the 30 teams, faceting the plot by `team` and adding a red dashed horizontal line for the mean payroll across years of each team.
+```{r}
+plot_payroll <- mlb_yearly %>%
+  ggplot(aes(x = as.integer(year), y = payroll, group = team)) +
+  geom_line() +
+  facet_wrap(~team) +
+  geom_hline(data = mlb_yearly %>% 
+               group_by(team) %>% 
+               summarise(mean_payroll = mean(payroll, na.rm = TRUE)),
+             aes(yintercept = mean_payroll), linetype = "dashed", color = "red") +
+  ggtitle("Payroll Trends Across Years by Team") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 6),
+        axis.text.y = element_text(angle = 0, vjust = 0, size = 6),
+        strip.text = element_text(size = 8),
+        plot.title = element_text(size = 8.5))
+
+plot_payroll
+```
+
+- Using `dplyr`, identify the three teams with the greatest `payroll_aggregate_computed`, and print a table of these teams and their `payroll_aggregate_computed`.
+```{r}
+# Identify top 3 teams with highest total payroll
+mlb_top_payroll <- mlb_aggregate_computed %>%
+  arrange(desc(payroll_aggregate_computed)) %>%
+  head(3)
+
+kable(mlb_top_payroll, caption = "Top 3 Teams by Payroll Aggregate Computed")
+```
+
+- Using `dplyr`, identify the three teams with the greatest percentage increase in payroll from 1998 to 2014 (call it `pct_increase`), and print a table of these teams along with `pct_increase` as well as their `payroll` figures from `1998` and `2014`.
+
+*[Hint: To compute payroll increase, it’s useful to pivot_wider the data back to a format where different years are in different columns. Use names_prefix = "payroll_" inside pivot_wider to deal with the fact column names cannot be numbers. To add different horizontal lines to different facets]*
+
+```{r}
+# Compute percentage increase from 1998 to 2014
+mlb_payroll_wide <- mlb_yearly %>%
+  filter(year %in% c(1998, 2014)) %>%
+  select(team, year, payroll) %>%
+  pivot_wider(names_from = year, values_from = payroll, names_prefix = "payroll_")
+
+mlb_pct_increase <- mlb_payroll_wide %>%
+  
+  mutate(pct_increase = 
+           (payroll_2014 - payroll_1998) / payroll_1998 * 100) %>%
+  select(team, payroll_1998, payroll_2014, pct_increase) %>%
+  arrange(desc(pct_increase)) %>%
+  head(3)
+
+kable(mlb_pct_increase, caption = "Top 3 Teams by Payroll Percentage Increase (1998-2014)")
+```
+
+
+- How are the metrics `payroll_aggregate_computed` and `pct_increase` reflected in the plot above, and how can we see that the two sets of teams identified above are the top three in terms of these metrics?
+
+**Solution:**
+
+- The payroll trends for each team are plotted, with a red dashed line indicating the mean payroll across years.
+- The top 3 teams by total payroll are identified and printed.
+- The top 3 teams by payroll percentage increase from 1998 to 2014 are identified and printed.
+- These metrics are reflected in the payroll trends plot, showing the top teams with increasing payroll trends over time.
+
+```{r}
+# Scatter plot of pct_wins vs. payroll with team labels and regression line
+plot3 <- ggplot(mlb_aggregate_joined, aes(x = payroll_aggregate_computed, y = pct_wins_aggregate_computed, label = team)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE, color = "blue") +
+  geom_text_repel(size = 2.5, nudge_y = 0.01, direction = "x") +  # Adjust text position above points
+  ggtitle("Win Percentage vs. Payroll") +
+  xlab("Aggregate Payroll (Billions)") +
+  ylab("Aggregate Win Percentage")
+
+print(plot3)
+
+# Compute team efficiency (win percentage per payroll dollar)
+mlb_efficiency <- mlb_aggregate_computed %>% 
+  mutate(efficiency = pct_wins_aggregate_computed / payroll_aggregate_computed) %>% 
+  arrange(desc(efficiency)) %>% 
+  select(team, efficiency, pct_wins_aggregate_computed, payroll_aggregate_computed)
+
+# Identify the top three most efficient teams
+top_efficient_teams <- mlb_efficiency %>% top_n(3, efficiency)
+
+# Print the top efficient teams
+kable(top_efficient_teams, caption = "Top 3 Most Efficient MLB Teams")
+```
+
