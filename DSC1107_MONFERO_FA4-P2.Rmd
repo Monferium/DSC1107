@@ -1,0 +1,77 @@
+---
+title: "DSC1107_FA4-P2"
+author: "John Benedict A. Monfero"
+date: "March 5, 2025"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, include=FALSE}
+library(tidyverse)	# tidyverse 
+library(readxl)	# for reading Excel files 
+library(knitr)	# for include_graphics() 
+library(kableExtra) # for printing tables 
+library(cowplot)	# for side by side plots
+library(FNN)	# for K-nearest-neighbors regression
+library(stat471)	# for cross_validate_spline()
+```
+
+# Case Study: Apple Farming
++ You own a square apple orchard, measuring 200 meters on each side. You have planted trees in a grid ten meters apart from each other. Last apple season, you measured the yield of each tree in your orchard (in average apples per week). You noticed that the yield of the different trees seems to be higher in some places of the orchard and lower in others, perhaps due to differences in sunlight and soil fertility across the orchard.
+
+> Unbeknownst to you, the yield $Y$ of the tree planted $E_1$ meters to the right and $E_2$ meters up from the bottom left-hand corner of the orchard has distribution $Y = ƒ(E) + ϵ$, where:
+
+$$f(E) = 50 + 0.001(E_1)^2+0.001(E_2)^2 \text{ such that } \epsilon \text{ ~ } N(0, \sigma^2) \text{ whereas } \sigma = 4$$
+
+```{r echo=FALSE, out.width="80%"}
+knitr::include_graphics("FA4-P2-PNG1.png", error = FALSE)
+```
+
+## A Simple Rule to Predict this Season's Yeild
+
+This apple season is right around the corner, and you’d like to predict the yield of each tree. You come up with perhaps the simplest possible prediction rule: predict this year’s yield for any given tree based on last year’s yield from that same tree. Without doing any programming, answer the following questions:
+
+### What is the training error of such a rule?
+
+> The **training error** is the error when predicting the yield of each tree using the same data that was used to fit the model. Since the simplest prediction rule is to *use last year's yield to predict this year's yield*. Therefore, the training error will be based on the difference between the actual yield and the predicted yield (which is the same as supposed last year's yield).
+
+Given the last year's yield model $Y = f(E) + \epsilon$ where:
+
+$$f(E) = 50 + 0.001(E_1)^2+0.001(E_2)^2 \text{ such that } \epsilon \text{ ~ } N(\mu = 0, \sigma^2 = 16)$$
+
+> **The training error will be the variance of the error term $\epsilon$** and since $\epsilon \text{ ~ } N(\mu = 0, \sigma^2 = 16)$ that is $\epsilon$ indeed within Normally distributed with mean 0 and standard deviation 4. **Hence $\text{ training error } = \sigma^2$**
+
+### What is the mean squared bias, mean variance, and expected test error of this prediction rule?
+> **Mean Squared Bias** measures the error introduced by approximating a real-world problem, which may be complex, by a simplified model. However, since we are using last year's yield to predict this year's yield, the bias is essentially zero because we are not approximating but directly using the past value. Making **${\tt Mean Squared Bias} = 0$**
+
+> On the other hand, **Mean Variance** measures how much the predictions for a given point vary between different realizations of the model. Since we are using the same yield from last year, the variance is the variance of the error term $ϵ$. Thus **${\tt Variance} = \sigma^2 = 16$**
+
+> Finally, **Expected Test Error** is the expected value of the squared difference between the predicted and actual values on new data. It combines both the bias and the variance. Since the bias is zero, the expected test error is just the variance of the error term. Having:
+
+$${\tt Expected Test Error} = {\tt Bias^2} + {\tt Variance} = 0 + 16 = 16$$
+
+### Why is this not the best possible prediction rule?
+##### Using last year's yield to predict this year's yield is simple and intuitive, but it has some limitations and disregarding variability of the scenario throughout time as passes by include:
+
+$${\tt Ignoring\ Environmental\ Changes}$$
+
+$${\tt No\ Adaptation\ to\ Unpredicted\ Trends}$$
+
+$${\tt Ignoring\ Individual\ Spatial\ Patterns}$$
+
+$${\tt Statistical\ Oversimplified\ and\ Delimitations}$$
+
+$${\tt Very\ Weak\ Model\ Complexity}$$
+
+## K-Nearest Neighbors (KNN) Regression (Conceptual)
+As a second attempt to predict a yield for each tree, you average together last year’s yields of the $K$ trees closest to it (including itself, and breaking ties randomly if necessary). So if you choose $K = 1$, you get back the simple rule from the previous section. This more general rule is called K-nearest neighbors (KNN) regression (see ISLR p. 105).
+
++ **KNN** is not a parametric model like linear or logistic regression, so it is a little harder to pin down and narrow down its degrees of freedom.
+
+##### 1.	What happens to the model complexity as K increases? Why?
+##### 2.	The degrees of freedom for KNN is sometimes considered n/K, where n is the training set size. Why might this be the case? [Hint: consider a situation where the data are clumped in groups of K.]
+##### 3.		Conceptually, why might increasing K tend to improve the prediction rule? What does this have to do with the bias-variance tradeoff?
+##### 4.		Conceptually, why might increasing K tend to worsen the prediction rule? What does this have to do with the bias-variance tradeoff?

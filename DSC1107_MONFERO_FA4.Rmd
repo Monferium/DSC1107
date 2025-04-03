@@ -1,0 +1,369 @@
+---
+title: "DSC1107_FA4"
+author: "John Benedict A. Monfero"
+date: "March 5, 2025"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, include=FALSE}
+library(tidyverse)	# tidyverse 
+library(readxl)	# for reading Excel files 
+library(knitr)	# for include_graphics() 
+library(kableExtra) # for printing tables 
+library(cowplot)	# for side by side plots
+library(FNN)	# for K-nearest-neighbors regression
+library(stat471)	# for cross_validate_spline()
+```
+
+# Case study: Bone mineral density
+
+> In this exercise, we will be looking at a data set (given in `bmd-data.xlsx`) on spinal bone mineral density, a physiological indicator that increases during puberty when a child grows. In this dataset, `idnum` is an identifier for each child and `spnbmd` represents the relative change in spinal bone mineral density between consecutive doctor’s visits.
+
+> The goal is to learn about the typical trends of growth in bone mineral density during puberty for boys and girls.
+
+## Import
+
+```{r}
+ # 1.	Using the readxl package, import the data into a tibble called bmd_raw
+bmd_raw <- read_excel('bmd-data.xlsx')
+
+ # 2.	Print the imported tibble.
+print(bmd_raw)
+```
+
+## Tidy
+
+> Comment on the layout of the data in the tibble
+
++ The dataset `bmd_raw` has **169 observations**, each identified by a unique `idnum`. Each observation includes eight characteristics: `age`, `sex`, `fracture`, `weight_kg`, `height_cm`, `medication`, `waiting_time`, and `spnbmd`.
+
+> What should be the variables in the data?
+
+>> The variables in the data are:
+
+```{r}
+glimpse(bmd_raw)
+```
+
++ `idnum`: Unique identifier for each observation
++ `age`: Age of the individual
++ `sex`: Gender of the individual
++ `fracture`: Fracture status
++ `weight_kg`: Weight in kilograms
++ `height_cm`: Height in centimeters
++ `medication`: Type of medication
++ `waiting_time`: Waiting time in days
++ `spnbmd`: Spinal bone mineral density
+
+> What operation is necessary to get it into tidy format?
+
+>> To tidy the data, we need to:
+
++ Arrange idnum in ascending order.
++ Rename age to `age_month` to reflect `age` in months
++ Rename `waiting_time` to `waiting_time_minutes` to reduce ambiguity
++ Convert `sex`, `fracture`, and `medication` to factors
+
+> Apply this operation to the data, storing the result in a tibble called bmd.
+
+```{r}
+bmd <- bmd_raw %>%
+  arrange(idnum) %>%
+  mutate(
+    age_month = floor(age),
+    waiting_time_minutes = waiting_time,
+    sex = as.factor(sex),
+    fracture = as.factor(fracture),
+    medication = as.factor(medication)
+  ) %>%
+  select(idnum, age_month, sex, fracture, weight_kg, height_cm, medication, waiting_time_minutes, spnbmd)
+
+glimpse(bmd)
+```
+
+## Explore
+
+> What is the total number of children in this dataset? What are the number of boys and girls? What are the median ages of these boys and girls?
+
+```{r}
+total_number_children <- bmd %>% summarise(total = n())
+
+total_gender_number <- bmd %>% count(sex)
+
+median_gender_groups <- bmd %>% group_by(sex) %>% summarise(median_age = median(age_month))
+
+# Print results
+total_number_children
+total_gender_number
+median_gender_groups
+
+```
+
+> Produce plots to compare the distributions of `spnbmd` and `age` between boys and girls (display these as two plots side by side, one for `spnbmd` and one for `age`). Are there apparent differences in either `spnbmd` or `age` between these two groups?
+
+```{r}
+# Plot distributions of spnbmd and age between boys and girls
+p1 <- ggplot(bmd, aes(x = spnbmd, fill = sex)) +
+  geom_density(alpha = 0.5) +
+  labs(title = "Distribution of spnbmd", x = "spnbmd", y = "Density")
+
+p2 <- ggplot(bmd, aes(x = age_month, fill = sex)) +
+  geom_density(alpha = 0.5) +
+  labs(title = "Distribution of Age", x = "Age (months)", y = "Density")
+
+# Display plots side by side
+plot_grid(p1, p2, ncol = 2)
+```
+
+> Create a scatter plot of spnbmd (y axis) versus age (x axis), faceting by gender. What trends do you see in this data?
+
+```{r}
+# Scatter plot of spnbmd vs age faceting by gender
+ggplot(bmd, aes(x = age_month, y = spnbmd, color = sex)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = FALSE) +
+  facet_wrap(~ sex) +
+  labs(title = "Scatter plot of spnbmd vs age faceting by gender", x = "Age (months)", y = "spnbmd")
+```
+
+## Model
+There are clearly some trends in this data, but they are somewhat hard to see given the substantial amount of variability. This is where splines come in handy.
+
+### Split
+To ensure unbiased assessment of predictive models, let’s split the data before we start modeling it.
+
+> Split `bmd` into *training (80%)* and *test (20%)* sets, using the rows in train_samples below for training. Store these in tibbles called `bmd_train` and `bmd_test`, respectively.
+
+```{r}
+set.seed(5) # seed set for reproducibility (DO NOT CHANGE)
+n <- nrow(bmd)
+train_samples <- sample(1:n, round(0.8*n))
+
+bmd_train <- bmd %>% slice(train_samples)
+bmd_test <- bmd %>% slice(-train_samples)
+```
+
+### Tune
+
+> Since the trends in `spnbmd` look somewhat different for boys than for girls, we might want to fit separate splines to these two groups. Separate `bmd_train` into `bmd_train_male` and `bmd_train_female`, and likewise for `bmd_test`.
+
+```{r}
+bmd_train_male <- bmd_train %>% filter(sex == "M")
+bmd_train_female <- bmd_train %>% filter(sex == "F")
+
+bmd_test_male <- bmd_test %>% filter(sex == "M")
+bmd_test_female <- bmd_test %>% filter(sex == "F")
+```
+
+> Using `cross_validate_spline` from the `stat471` R package, perform 10-fold cross-validation on `bmd_train_male` and `bmd_train_female`, trying degrees of freedom 1,2,. . . ,15. Display the two resulting CV plots side by side.
+
+```{r}
+# Cannot apply degrees of freedom == 1, the argument is too small for both train data sets
+cv_male <- cross_validate_spline(bmd_train_male$age_month, bmd_train_male$spnbmd, df = 2:15, nfolds = 10)
+cv_female <- cross_validate_spline(bmd_train_female$age_month, bmd_train_female$spnbmd, df = 2:15, nfolds = 10)
+
+# Note: When the function `cross_validate_spline()` by `library(stat471)` executes without any pending errors, it outputs successfully an object with the following attributes:
+    # Given variable name: `cv_male`, the output of `cross_validate_spline()` would be:
+      # cv_male$cv_table
+      # cv_male$cv_plot
+      # cv_male$df.1se
+      # cv_male$$df.min
+
+# Provided the instructions above, we will extract their CV plots
+p1 <- cv_male$cv_plot + labs(title = "CV Error for Males")
+p2 <- cv_female$cv_plot + labs(title = "CV Error for Females")
+
+plot_grid(p1, p2, ncol = 2)
+```
+
+> What are the degrees of freedom values minimizing the CV curve for boys and girls, and what are the values obtained from the one standard error rule?
+
+```{r}
+# Determining the df (degrees of freedom) and corresponding se (standard errors)
+df_min_male <- cv_male$df.min
+df_min_female <- cv_female$df.min
+
+df_1se_male <- cv_male$df.1se
+df_1se_female <- cv_female$df.1se
+```
+
+```{r}
+cat("Degrees of Freedom Minimizing CV Error for Males:", df_min_male, "\n")
+cat("Degrees of Freedom Minimizing CV Error for Females:", df_min_female, "\n")
+cat("Degrees of Freedom from One Standard Error Rule for Males:", df_1se_male, "\n")
+cat("Degrees of Freedom from One Standard Error Rule for Females:", df_1se_female, "\n")
+```
+
+> For the sake of simplicity, let’s use the same degrees of freedom for males as well as females. Define `df.min` to be the maximum of the two `df.min` values for males and females, and define `df.1se` likewise. Add these two spline fits to the scatter plot of `spnbmd` (y axis) versus `age` (x axis), faceting by `gender`.
+
+```{r}
+df_min <- max(df_min_male, df_min_female)
+df_1se <- max(df_1se_male, df_1se_female)
+
+cat("df.min:", df_min, "\n")
+cat("df.1se:", df_1se, "\n")
+```
+
+> Given your intuition for what growth curves look like, which of these two values of the degrees of freedom makes more sense?
+
+```{r}
+cat("The value we obtained in variable `df.min`:", df_min, "\n\n\n","It ensures and minimizes the cross-validation error, suggesting it provides the best fit to the training data. It might capture more nuances in the data, but it could also risk overfitting, especially if the data has substantial variability.", "\n\n\n")
+
+cat("Nevertheless, the value we obtained in variable `df.1se`:", df_1se, "\n\n\n","Generally derives from the one standard error rule, which typically provides a more conservative and bias-variance trade-off fit. It balances the model complexity and generalizability, reducing the risk of overfitting while still capturing the main trends.")
+```
+
+##### Intuition for Growth Curves
+
++ Growth curves generally follow smooth, gradual changes rather than highly complex patterns. Therefore, a slightly lower degree of freedom (df.1se = 11) might make more sense as it avoids overfitting and ensures the model remains generalizable to new data.
+
+> Using df.1se (11) is likely the better choice for modeling growth curves, as it provides a balance between fitting the data well and maintaining simplicity and generalizability.
+
+### Final Fit
+Using the degrees of freedom chosen above, fit final spline models to `bmd_train_male` and
+`bmd_train_female`
+
+```{r}
+library(splines)
+
+# Fit final spline models using df_1se (11)
+df_1se <- 11
+
+# Fit spline model for males
+model_male <- lm(spnbmd ~ splines::bs(age_month, df = df_1se), data = bmd_train_male)
+model_female <- lm(spnbmd ~ splines::bs(age_month, df = df_1se), data = bmd_train_female)
+
+# Predict on training data
+train_pred_male <- predict(model_male, bmd_train_male)
+train_pred_female <- predict(model_female, bmd_train_female)
+
+# Predict on test data
+test_pred_male <- predict(model_male, bmd_test_male)
+test_pred_female <- predict(model_female, bmd_test_female)
+```
+
+### Graphing the Final Fit Results:
+
+```{r}
+# Create data frames for plotting
+train_male_plot <- bmd_train_male %>%
+  mutate(predicted_spnbmd = train_pred_male) %>%
+  select(age_month, spnbmd, predicted_spnbmd) %>%
+  mutate(type = "Training", gender = "Male")
+
+train_female_plot <- bmd_train_female %>%
+  mutate(predicted_spnbmd = train_pred_female) %>%
+  select(age_month, spnbmd, predicted_spnbmd) %>%
+  mutate(type = "Training", gender = "Female")
+
+test_male_plot <- bmd_test_male %>%
+  mutate(predicted_spnbmd = test_pred_male) %>%
+  select(age_month, spnbmd, predicted_spnbmd) %>%
+  mutate(type = "Test", gender = "Male")
+
+test_female_plot <- bmd_test_female %>%
+  mutate(predicted_spnbmd = test_pred_female) %>%
+  select(age_month, spnbmd, predicted_spnbmd) %>%
+  mutate(type = "Test", gender = "Female")
+
+# Combine data frames
+plot_data <- bind_rows(train_male_plot, train_female_plot, test_male_plot, test_female_plot)
+
+# Create individual plots
+p1 <- ggplot(plot_data %>% filter(type == "Training" & gender == "Male"), aes(x = age_month, y = spnbmd)) +
+  geom_point() +
+  geom_line(aes(y = predicted_spnbmd), color = "blue") +
+  labs(title = "Training Data - Male", x = "Age (months)", y = "spnbmd")
+
+p2 <- ggplot(plot_data %>% filter(type == "Training" & gender == "Female"), aes(x = age_month, y = spnbmd)) +
+  geom_point() +
+  geom_line(aes(y = predicted_spnbmd), color = "blue") +
+  labs(title = "Training Data - Female", x = "Age (months)", y = "spnbmd")
+
+p3 <- ggplot(plot_data %>% filter(type == "Test" & gender == "Male"), aes(x = age_month, y = spnbmd)) +
+  geom_point() +
+  geom_line(aes(y = predicted_spnbmd), color = "red") +
+  labs(title = "Test Data - Male", x = "Age (months)", y = "spnbmd")
+
+p4 <- ggplot(plot_data %>% filter(type == "Test" & gender == "Female"), aes(x = age_month, y = spnbmd)) +
+  geom_point() +
+  geom_line(aes(y = predicted_spnbmd), color = "red") +
+  labs(title = "Test Data - Female", x = "Age (months)", y = "spnbmd")
+
+# Arrange plots in a 2x2 grid
+plot_grid(p1, p2, p3, p4, ncol = 2, nrow = 2)
+```
+
+### Evaluate
+
+> Using the final models above, answer the following questions for boys and girls separately: What is the training `RMSE`? What is the test `RMSE`? Print these metrics in a nice table (Use kable).
+
+```{r}
+# Calculate RMSE
+train_rmse_male <- sqrt(mean((bmd_train_male$spnbmd - train_pred_male)^2))
+train_rmse_female <- sqrt(mean((bmd_train_female$spnbmd - train_pred_female)^2))
+
+test_rmse_male <- sqrt(mean((bmd_test_male$spnbmd - test_pred_male)^2))
+test_rmse_female <- sqrt(mean((bmd_test_female$spnbmd - test_pred_female)^2))
+
+# Print RMSE in a table
+rmse_table <- tibble(
+  Gender = c("Male", "Female"),
+  Training_RMSE = c(train_rmse_male, train_rmse_female),
+  Test_RMSE = c(test_rmse_male, test_rmse_female)
+)
+
+rmse_table %>%
+  kable() %>%
+  kable_styling()
+```
+
+> How do the `training` and `test` errors compare? What does this suggest about the extent of *overfitting* that has occurred?
+
+##### Analysis
++ For males, the training RMSE is `0.1635`, while the test RMSE is `0.1878`.
++ For females, the training RMSE is `0.1016`, while the test RMSE is `0.1513`.
+
+##### Observations
++ The test RMSE is slightly higher than the training RMSE for both males and females. This increase in error from training to test data suggests that the model fits the training data well but has a slightly higher error when predicting new, unseen data.
+
+##### Conclusion
+
+> The difference between training and test RMSE indicates a **moderate level of overfitting**. The model captures the trends in the training data but does not generalize perfectly to the test data. However, the increase in error is not drastic, suggesting that the model still maintains a reasonable balance between fitting the training data and generalizing to new data.
+
+## Interpret
+> Using the degrees of freedom chosen above, redo the scatter plot with the overlaid spline fits, this time without faceting in order to directly compare the spline fits for boys and girls. Instead of faceting, distinguish the genders by color.
+
+```{r}
+# Fit final spline models using df_1se (11)
+df_1se <- 11
+
+# Fit spline model for males
+model_male <- lm(spnbmd ~ splines::bs(age_month, df = df_1se, Boundary.knots = range(bmd_train_male$age_month)), data = bmd_train_male)
+model_female <- lm(spnbmd ~ splines::bs(age_month, df = df_1se, Boundary.knots = range(bmd_train_female$age_month)), data = bmd_train_female)
+
+# Predict on the full dataset
+bmd$predicted_spnbmd <- ifelse(bmd$sex == "M",
+                               predict(model_male, newdata = bmd),
+                               predict(model_female, newdata = bmd))
+
+# Scatter plot with overlaid spline fits
+ggplot(bmd, aes(x = age_month, y = spnbmd, color = sex)) +
+  geom_point() +
+  geom_line(aes(y = predicted_spnbmd), linewidth = 1) +
+  labs(title = "Scatter plot of spnbmd vs age with spline fits", x = "Age (months)", y = "spnbmd") +
+  scale_color_manual(values = c("blue", "red"), labels = c("Female", "Male")) 
+```
+
++ The splines help us see the trend in the data much more clearly. Eyeballing these fitted curves, answer the following questions. At what ages (approximately) do boys and girls reach the peaks of their growth spurts? At what ages does growth largely level off for boys and girls? Do these seem in the right ballpark?
+
+>> Peaks of Growth Spurts and Levelling Off of Growth
+
+>>> Boys: The peak of the growth spurt for boys appears to be around 55-75 months. Growth largely levels off for boys starting around 75 months.
+
+>>> Girls: The peak of the growth spurt for girls appears to be around 45-70 months. Growth largely levels off for girls starting around 70 months.
+
+> **Boys generally experience their growth spurts later than girls and continue growing for a longer period. Girls typically reach their peak growth spurt earlier and level off sooner compared to boys.**
